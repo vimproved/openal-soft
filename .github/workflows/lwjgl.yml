@@ -72,6 +72,54 @@ jobs:
           aws s3 cp libopenal.so.git s3://lwjgl-build/nightly/linux/${{matrix.ARCH}}/ $S3_PARAMS
         name: Upload git revision
 
+  linux-musl:
+    name: Linux Musl
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:3
+    strategy:
+      fail-fast: false
+      matrix:
+        ARCH: [x64]
+        include:
+          - ARCH: x64
+            PACKAGES: alsa-lib-dev pulseaudio-dev portaudio-dev jack-dev dbus-dev #pipewire-devel
+    steps:
+      - run: |
+          apk add git
+        name: Upgrade git
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 3
+      - run: |
+          apk add build-base cmake aws-cli
+        name: Install build dependencies
+      - run: apk add ${{matrix.PACKAGES}}
+        name: Install OpenAL Soft dependencies
+        #./autogen.sh -Dprefix=/usr -Dtests=disabled -Dexamples=disabled -Dsession-managers=[] -Dgstreamer=disabled -Davb=disabled -Dv4l2=disabled
+      - run: |
+          apk add meson samurai which eudev-dev pkgconf
+          git clone --branch 0.3.50 --depth=1 https://gitlab.freedesktop.org/pipewire/pipewire.git
+          cd pipewire
+          ./autogen.sh -Dprefix=/usr -Dtests=disabled -Dexamples=disabled -Dgstreamer=disabled -Dv4l2=disabled -Dpipewire-v4l2=disabled
+          make
+          make install
+        name: Build & install recent pipewire
+      - run: |
+          cmake -B build -DALSOFT_REQUIRE_RTKIT=ON -DALSOFT_REQUIRE_ALSA=ON -DALSOFT_REQUIRE_OSS=ON -DALSOFT_REQUIRE_PORTAUDIO=ON -DALSOFT_REQUIRE_PULSEAUDIO=ON -DALSOFT_REQUIRE_JACK=ON -DALSOFT_REQUIRE_PIPEWIRE=ON -DALSOFT_EMBED_HRTF_DATA=YES -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-U_FORTIFY_SOURCE -D_FORTIF=Y_SOURCE=0"
+        name: Configure build
+      - run: |
+          cmake --build build --parallel
+          strip build/libopenal.so
+        name: Build
+      - run: aws s3 cp build/libopenal.so s3://lwjgl-build/nightly/linux-musl/${{matrix.ARCH}}/ $S3_PARAMS
+        name: Upload artifact
+      - run: |
+          git config --global --add safe.directory $PWD
+          git log --first-parent --pretty=format:%H HEAD~2..HEAD~1 > libopenal.so.git
+          aws s3 cp libopenal.so.git s3://lwjgl-build/nightly/linux-musl/${{matrix.ARCH}}/ $S3_PARAMS
+        name: Upload git revision
+
   linux-cross:
     name: Linux Cross
     runs-on: ubuntu-latest
